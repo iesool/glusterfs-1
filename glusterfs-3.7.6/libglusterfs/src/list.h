@@ -227,6 +227,133 @@ static inline void list_rotate_left (struct list_head *head)
 		list_move_tail (first, head);
 	}
 }
+
+struct hlist_head {
+	struct hlist_node *first;
+}
+
+struct hlist_node {
+	struct hlist_node *next;
+	struct hlist_node **pprev;
+}
+//hlist的初始化
+#define HLIST_HEAD_INIT {.first = NULL}
+#define HLIST_HEAD(name) struct hlist_head name = {.first = NULL}
+//struct hlist_head 节点进行初始化
+#define INIT_HLIST_HEAD(ptr) ((ptr)->first = NULL)
+//对hlist_node结点的一个变量初始化，用在删除结点之后对结点的操作
+static inline void
+INIT_HLIST_NODE(struct hlist_node *head){
+	head->next = NULL;
+	head->pprev = NULL;
+}
+//判断某一节点是否加入到链表中来
+//若pprev指向空，则节点未加入到链表中，返回true,否则false
+static inline int
+hlist_unhashed(const struct hlist_node *head){
+	return !head->pprev;
+}
+//判断hlist链表是不是空链表 是返回true，否则false
+static inline int 
+hlist_empty(const struct hlist_head *head){
+	return !head->first;
+}
+//hlist删除结点操作
+static inline void 
+_hlist_del(struct hlist_node *old){
+	struct hlist_node *next = old->next;
+	struct hlist_node **pprev = old->pprev;
+	*pprev = next;
+	if(next)
+		next->pprev = pprev;
+	
+}
+//将结点next、pprev指向不可访问地址
+static inline void
+hlist_del(struct hlist_node *old){
+	_hlist_del(old);
+	old->next = (void *)0xbabebabe;
+	old->pprev = (void *)0xcafecafe;
+}
+//先判断结点是否为空，不为空删除再进行初始化
+static inline void 
+hlist_del_init(struct hlist_node *old)
+{
+	if (!hlist_unhashed(old)) {
+		_hlist_del(old);
+		INIT_HLIST_NODE(old);
+	}
+}
+//添加结点node到head表头
+static inline void
+hlist_add_head(struct hlist_node *node,struct hlist_head *head){
+	struct hlist_node *first = head->first;
+	node->next = first;
+	if(first)
+		first->pprev = &node->next;
+	head->first = node;
+	node->pprev = &head->first;
+}
+//添加结点node到结点old之前
+static inline void
+hlist_add_before(struct hlist_node *node,struct hlist_node *old){
+	node->pprev = old->pprev;
+	node->next = old;
+	old->pprev = &node->next;
+	*(node->pprev) = node;
+}
+//添加结点node到结点old之后
+static inline void 
+hlist_add_after(struct hlist_node *node,struct hlist_node *old){
+	old->next = node->next;
+	node->next = old;
+	old->pprev = &node->next;
+
+	if(old->next)
+		old->next->pprev = &old->next;
+}
+//头结点head接管头结点old的所有节点，并初始化old
+static inline void 
+hlist_move_list(struct hlist_head *old,struct hlist_head *head){
+	head->first = old->first;
+	if(head->first)
+		head->first->pprev = &head->first;
+	old->first = NULL;
+}
+//已知一个成员变量的名字、指针和结构体类型情况下，计算结构的指针，即结构体起始地址
+#define hlist_entry(ptr,type,member)				\
+	((type *)((char *)(ptr)-(unsigned long)(&((type *)0)->member)))
+
+//遍历hlist链表
+#define hlist_for_each(pos, head) \
+	for (pos = (head)->first; pos; pos = pos->next)
+//遍历链表，一般删除节点使用		
+#define hlist_for_each_safe(pos, n, head) \
+			for (pos = (head)->first; pos && ({ n = pos->next; 1; }); \
+				 pos = n)
+//遍历查找typeof(tpos)的结构体类型入口地址
+#define hlist_for_each_entry(tpos, pos, head, member)			 \
+					for (pos = (head)->first;					 \
+						 pos && 		 \
+						({ tpos = hlist_entry(pos, typeof(*tpos), member); 1;}); \
+						 pos = pos->next)
+//从结点pos下一个遍历找typeof(*tpos)的结构体类型入口地址
+#define hlist_for_each_entry_continue(tpos, pos, member)		 \
+						for (pos = (pos)->next; 					 \
+							 pos && 		 \
+							({ tpos = hlist_entry(pos, typeof(*tpos), member); 1;}); \
+							 pos = pos->next)
+//从结点pos开始遍历找typeof(*tpos)的结构体类型入口地址
+#define hlist_for_each_entry_from(tpos, pos, member)			 \
+								for (; pos &&			 \
+									({ tpos = hlist_entry(pos, typeof(*tpos), member); 1;}); \
+									 pos = pos->next)
+//从头结点head开始遍历查找typeof(*tpos)的结构体类型入口地址
+#define hlist_for_each_entry_safe(tpos, pos, n, head, member) 		 \
+									for (pos = (head)->first;					 \
+										 pos && ({ n = pos->next; 1; }) &&				 \
+										({ tpos = hlist_entry(pos, typeof(*tpos), member); 1;}); \
+										 pos = n)
 #define list_entry(ptr, type, member)					\
 	((type *)((char *)(ptr)-(unsigned long)(&((type *)0)->member)))
 
