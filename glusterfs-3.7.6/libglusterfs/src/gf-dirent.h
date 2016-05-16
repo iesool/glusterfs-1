@@ -19,7 +19,7 @@
 
 #include "iatt.h"
 #include "inode.h"
-
+#include "list.h"
 #define gf_dirent_size(name) (sizeof (gf_dirent_t) + strlen (name) + 1)
 
 int
@@ -38,8 +38,14 @@ struct _dir_entry_t {
 	char                *link;
 	struct iatt          buf;
 };
-
-
+struct qstr {
+	uint32_t hash;
+	uint32_t len;
+	const uint8_t *name;
+}
+typedef struct {
+	volatile int counter;
+} atomic_t;
 struct _gf_dirent_t {
 	union {
 		struct list_head             list;
@@ -48,10 +54,19 @@ struct _gf_dirent_t {
 			struct _gf_dirent_t *prev;
 		};
 	};
+	atomic_t 							 d_count;
+	struct hlist_node					 d_hash;/*lookup hash list*/
+	struct list_head 					 d_lru;/*LRU list*/
+	struct list_head 					 d_subdirs;/*all the children are linked together*/
+	struct list_head					 d_alias;/*inode alias list,list of all the dentry share the same inode*/
+	struct list_head					 d_child;/*child of parent list*/
+	const struct dentry_operations 		 *d_op;
 	uint64_t                             d_ino;
 	uint64_t                             d_off;
+	uint64_t 							 d_time;/*used by d_revalidate*/
 	uint32_t                             d_len;
 	uint32_t                             d_type;
+	uint32_t							 d_flags;/*used by lock*/
         struct iatt                          d_stat;
         dict_t                              *dict;
         inode_t                             *inode;
@@ -66,7 +81,15 @@ void gf_dirent_entry_free (gf_dirent_t *entry);
 void gf_dirent_free (gf_dirent_t *entries);
 int gf_link_inodes_from_dirent (xlator_t *this, inode_t *parent,
                                 gf_dirent_t *entries);
-
+struct dentry_operations {
+	int (*d_revalidate)(struct dentry *, struct nameidata *);
+	int (*d_hash) (struct dentry *, struct qstr *);
+	int (*d_compare) (struct dentry *, struct qstr *, struct qstr *);
+	int (*d_delete)(struct dentry *);
+	void (*d_release)(struct dentry *);
+	void (*d_iput)(struct dentry *, struct inode *);
+	//char *(*d_dname)(struct dentry *, char *, int);
+}
 void
 gf_link_inode_from_dirent (xlator_t *this, inode_t *parent, gf_dirent_t *entry);
 #endif /* _GF_DIRENT_H */
